@@ -24,7 +24,7 @@ async function run(fn){const er=$('#er'),ok=$('#ok');er.textContent='';ok.disabl
 const field=(id,label,attrs='')=>`<div class="lbl">${label}</div><input class="in" id="${id}" ${attrs}>`;
 
 async function boot(){
-  if(CONFIG.url.includes('VOTRE'))return show('<div class="card auth"><b>Configuration manquante</b><p class="mut">Ouvrez <code>js/config.js</code> et collez l\'URL et la clé publique de votre projet Supabase.</p></div>');
+  if(CONFIG.url.includes('VOTRE'))return show('<div class="card auth"><b>Configuration manquante</b><p class="mut">Ouvrez <code>config.js</code> et collez l\'URL et la clé publique de votre projet Supabase.</p></div>');
   const {data:{session}}=await db.auth.getSession();U=session&&session.user;
   if(!U){$('#nav').innerHTML='';return authView()}
   PF=chk(await db.from('profiles').select('*').eq('id',U.id).maybeSingle());
