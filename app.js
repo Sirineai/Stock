@@ -16,15 +16,16 @@ const day0=()=>{const d=new Date();d.setHours(0,0,0,0);return d.getTime()};
 const close_=()=>$('#ov').style.display='none';
 let scanner=null;
 async function stopScan(){try{if(scanner){await scanner.stop();scanner.clear()}}catch(e){}scanner=null;$('#sc').style.display='none'}
-async function scan(cb){let got=false;const fin=c=>{if(got||!c)return;got=true;stopScan();cb(String(c).trim())};
-  $('#sc').style.display='flex';$('#scm').textContent='';$('#scin').value='';$('#scok').onclick=()=>fin($('#scin').value);
-  try{scanner=new Html5Qrcode('reader');await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:160}},fin,()=>{})}
+async function scan(cb){let got=false;const fin=c=>{if(got||!c)return;got=true;navigator.vibrate&&navigator.vibrate(80);stopScan();cb(String(c).trim())};
+  $('#sc').style.display='flex';$('#scm').textContent='';$('#scin').value='';$('#scok').onclick=()=>fin($('#scin').value);setTimeout(()=>$('#scin').focus(),150);
+  const FM=Html5QrcodeSupportedFormats,cfg={fps:15,formatsToSupport:[FM.EAN_13,FM.EAN_8,FM.UPC_A,FM.UPC_E,FM.CODE_128,FM.CODE_39,FM.ITF,FM.QR_CODE],experimentalFeatures:{useBarCodeDetectorIfSupported:true},qrbox:(w,h)=>({width:Math.floor(w*.9),height:Math.floor(Math.min(h*.6,220))})};
+  try{scanner=new Html5Qrcode('reader',{verbose:false});await scanner.start({facingMode:'environment'},cfg,fin,()=>{});$('#scm').style.color='var(--mut)';$('#scm').textContent='Placez le code à plat dans le cadre, avec de la lumière. Sinon, saisissez-le ci-dessous.'}
   catch(e){$('#scm').textContent='Caméra indisponible : saisissez le code ci-dessous.'}}
 async function run(fn){const er=$('#er'),ok=$('#ok');er.textContent='';ok.disabled=true;try{await fn()}catch(e){er.textContent=msg(e)}ok.disabled=false}
 const field=(id,label,attrs='')=>`<div class="lbl">${label}</div><input class="in" id="${id}" ${attrs}>`;
 
 async function boot(){
-  if(CONFIG.url.includes('VOTRE'))return show('<div class="card auth"><b>Configuration manquante</b><p class="mut">Ouvrez <code>config.js</code> et collez l\'URL et la clé publique de votre projet Supabase.</p></div>');
+  if(CONFIG.url.includes('VOTRE'))return show('<div class="card auth"><b>Configuration manquante</b><p class="mut">Ouvrez <code>js/config.js</code> et collez l\'URL et la clé publique de votre projet Supabase.</p></div>');
   const {data:{session}}=await db.auth.getSession();U=session&&session.user;
   if(!U){$('#nav').innerHTML='';return authView()}
   PF=chk(await db.from('profiles').select('*').eq('id',U.id).maybeSingle());
@@ -98,4 +99,5 @@ else if(a=='scanitem')scan(c=>{const it=A.find(x=>x.barcode===c);if(it){$('#fa')
 else if(a=='link')await run(async()=>{chk(await db.rpc('set_item_barcode',{p_item:$('#fa').value,p_barcode:d.c}));await loadAll();$('#lk').innerHTML='';toast('Code associé à l\'article')});
 else if(a=='logout'){await db.auth.signOut();boot()}});
 document.addEventListener('input',e=>{const i=e.target.id;if(i=='sq'){F.sq=e.target.value;fillStock()}else if(i=='mq'){F.q=e.target.value;fillMv()}else if(i=='mf'){F.from=e.target.value;fillMv()}else if(i=='mt'){F.to=e.target.value;fillMv()}else if(i=='fq'||i=='fa')est()});
+document.addEventListener('keydown',e=>{if(e.key=='Enter'&&e.target.id=='scin'){e.preventDefault();$('#scok').click()}});
 boot().catch(e=>show('<div class="card auth err">'+esc(msg(e))+'</div>'));
