@@ -41,3 +41,11 @@ nav button.on{color:var(--t)}
 .err{color:#C0392B;font-weight:700;margin:6px 0}
 .auth{margin-top:40px}.auth h1{font-size:26px;margin:16px 0 4px}textarea.in{min-height:90px;padding:12px 14px}
 #sc{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}#sc .card{width:100%;max-width:420px}
+@media(min-width:900px){
+nav{top:0;right:auto;width:230px;border-top:0;border-right:1px solid var(--bd);justify-content:flex-start;align-items:flex-start;padding:24px 12px}
+nav div{width:100%;max-width:none;flex-direction:column;gap:6px;padding:0}
+nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;min-height:50px;padding:0 16px;border-radius:14px;font-size:15px}
+nav button.on{background:var(--p)}
+#app{max-width:1230px;margin:0 auto;padding:28px 40px 40px 270px}
+#ov{align-items:center}#sh{border-radius:24px;max-height:88%}
+}
