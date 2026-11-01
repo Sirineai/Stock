@@ -1,14 +1,14 @@
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const P={box:"M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",in:"M12 4v12M7 11l5 5 5-5M5 20h14",out:"M12 20V8M7 13l5-5 5 5M5 4h14",tr:"M4 8h14l-3-3M20 16H6l3 3",inv:"M9 4h6v3H9zM7 6H5v15h14V6h-2M9 13l2 2 4-4",home:"M3 11l9-8 9 8v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z",rep:"M4 20V10M10 20V4M16 20v-8M22 20H2",warn:"M12 3l10 18H2zM12 10v5M12 18v.01",scan:"M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M4 12h16"};
+const P={box:"M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",in:"M12 4v12M7 11l5 5 5-5M5 20h14",out:"M12 20V8M7 13l5-5 5 5M5 4h14",tr:"M4 8h14l-3-3M20 16H6l3 3",inv:"M9 4h6v3H9zM7 6H5v15h14V6h-2M9 13l2 2 4-4",home:"M3 11l9-8 9 8v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z",rep:"M4 20V10M10 20V4M16 20v-8M22 20H2",warn:"M12 3l10 18H2zM12 10v5M12 18v.01",scan:"M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M4 12h16",cfg:"M3 21h18M5 21V5l7-2 7 2v16M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2"};
 const ic=(k,s=22)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${P[k]}"/></svg>`;
 const money=n=>Math.round(n).toLocaleString('fr-FR')+' DA';
 const fdate=t=>new Date(t).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 const CATS=['Électricité','Plomberie','Peinture','Maçonnerie','Autre'];
 const db=supabase.createClient(CONFIG.url,CONFIG.key);
-let U=null,PF=null,SITE=null,A=[],W=[],AP=[],M=[],C=[],tab='home',F={type:'all',q:'',from:'',to:'',cat:'Tout',sq:'',low:false};
-const ERR={insufficient_stock:'Stock insuffisant.',bad_qty:'Quantité invalide.',not_member:'Compte non rattaché à une entreprise.'};
-const msg=e=>e.code=='23505'?'Ce code est déjà utilisé par un autre article.':(ERR[(e.message||'').trim()]||e.message||'Erreur');
+let U=null,PF=null,SITE=null,A=[],W=[],AP=[],BD=[],BK=[],M=[],C=[],tab='home',F={type:'all',q:'',from:'',to:'',cat:'Tout',sq:'',low:false};
+const ERR={empty_basket:'Ajoutez au moins un article.',insufficient_stock:'Stock insuffisant.',bad_qty:'Quantité invalide.',not_member:'Compte non rattaché à une entreprise.'};
+const msg=e=>e.code=='23505'?(/building|apartment/.test(e.message||'')?'Un bâtiment portant ce nom existe déjà.':'Ce code est déjà utilisé par un autre article.'):(ERR[(e.message||'').trim()]||e.message||'Erreur');
 const chk=r=>{if(r.error)throw r.error;return r.data};
 const show=h=>{$('#app').innerHTML=h};
 const toast=t=>{const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',2800)};
@@ -35,24 +35,37 @@ async function boot(){
   await loadAll();render()}
 async function loadAll(){
   const q=t=>db.from(t).select('*').eq('site_id',SITE.id);
-  const [a,w,ap,m,c]=await Promise.all([q('items').order('name'),db.from('workers').select('*').eq('active',true).order('name'),q('apartments').order('code'),
-    db.from('movements').select('*,items(name),workers(name),apartments(building,code),profiles(full_name)').eq('site_id',SITE.id).order('created_at',{ascending:false}).limit(1000),q('apartment_costs')]);
-  A=chk(a);W=chk(w);AP=chk(ap);C=chk(c);
+  const [a,w,ap,m,c,bd]=await Promise.all([q('items').order('name'),db.from('workers').select('*').eq('active',true).order('name'),q('apartments').order('code'),
+    db.from('movements').select('*,items(name),workers(name),apartments(building,code),profiles(full_name)').eq('site_id',SITE.id).order('created_at',{ascending:false}).limit(1000),q('apartment_costs'),q('buildings').order('name')]);
+  A=chk(a);W=chk(w);AP=chk(ap);C=chk(c);BD=chk(bd);
   M=chk(m).map(x=>({ts:new Date(x.created_at).getTime(),type:x.type,name:x.items.name,qty:x.qty,worker:x.workers?x.workers.name:'',apt:x.apartments?x.apartments.building+' '+x.apartments.code:'',cost:x.qty*x.unit_price,by:x.profiles?x.profiles.full_name:''}))}
 
 function authView(){show(`<div class="auth"><div class="logo">${ic('box')}</div><h1>Stock Chantier</h1><p class="mut">Connectez-vous pour gérer votre stock.</p>${field('em','Email','type="email" autocomplete="email"')}${field('pw','Mot de passe','type="password" autocomplete="current-password"')}<div class="err" id="er"></div><button class="btn" id="ok" data-a="login">Se connecter</button><button class="btn sec" data-a="signup" style="margin-top:10px">Créer un compte</button></div>`)}
 async function auth(signup){const email=$('#em').value.trim(),password=$('#pw').value;if(!email||password.length<6)return $('#er').textContent='Email et mot de passe (6 caractères minimum).';
   await run(async()=>{const r=signup?await db.auth.signUp({email,password}):await db.auth.signInWithPassword({email,password});if(r.error)throw r.error;if(!r.data.session)return toast('Compte créé. Confirmez votre email puis connectez-vous.');boot()})}
 function onboard(){show(`<div class="auth"><h1>Bienvenue</h1><p class="mut">Créez l'espace de votre entreprise.</p>${field('co','Nom de l\'entreprise')}${field('nm','Votre nom')}<div class="err" id="er"></div><button class="btn" id="ok" data-a="mkco">Continuer</button></div>`)}
-function setupView(){show(`<div class="auth"><h1>Votre chantier</h1><p class="mut">Ces informations pourront être complétées plus tard.</p>${field('sn','Nom du chantier')}${field('sb','Bâtiment (ex : Bloc B)')}<div class="lbl">Appartements (séparés par des virgules)</div><input class="in" id="sa" placeholder="01, 02, 03, 04"><div class="lbl">Ouvriers (un par ligne : nom, métier)</div><textarea class="in" id="sw" placeholder="Karim, Plombier&#10;Samir, Électricien"></textarea><div class="err" id="er"></div><button class="btn" id="ok" data-a="mksite">Créer le chantier</button></div>`)}
-async function mkSite(){const n=$('#sn').value.trim(),b=$('#sb').value.trim(),codes=$('#sa').value.split(',').map(s=>s.trim()).filter(Boolean),ws=$('#sw').value.split('\n').map(l=>l.split(',').map(s=>s.trim())).filter(l=>l[0]);
-  if(!n||!b||!codes.length)return $('#er').textContent='Chantier, bâtiment et appartements obligatoires.';
+const flName=f=>f==null?'':f==0?'RDC':f+(f==1?'er':'e')+' étage';
+const bFields=()=>`${field('bn','Nom du bâtiment (ex : Bloc A)')}${field('bf','Nombre de niveaux (RDC compris)','type="number" inputmode="numeric" value="5"')}${field('bp','Appartements par étage','type="number" inputmode="numeric" value="4"')}${field('bt','Type de chaque appartement d\'un étage','placeholder="F4, F4, F5, Studio"')}<div class="mut" style="margin:-4px 0 6px">Un seul type si tous sont pareils (ex : F4), sinon un type par appartement, dans l'ordre. Le même plan est répété à chaque étage.</div><div class="mut" id="bpv" style="font-weight:700"></div>`;
+const bpv=()=>{const f=+$('#bf').value|0,p=+$('#bp').value|0;$('#bpv').textContent=f>0&&p>0?'Total : '+f*p+' appartements':''};
+async function bCreate(siteId){const n=$('#bn').value.trim(),f=+$('#bf').value|0,p=+$('#bp').value|0,
+  t=$('#bt').value.split(',').map(s=>s.trim()).filter(Boolean).map(x=>/^f\d/i.test(x)?x.toUpperCase():x.charAt(0).toUpperCase()+x.slice(1).toLowerCase());
+  if(!n)throw{message:'Le nom du bâtiment est obligatoire.'};
+  if(f<1||f>60||p<1||p>20||f*p>600)throw{message:'Niveaux (1 à 60) et appartements par étage (1 à 20) invalides.'};
+  if(t.length!=1&&t.length!=p)throw{message:'Indiquez 1 type, ou '+p+' types (un par appartement).'};
+  const cid=PF.company_id,b=chk(await db.from('buildings').insert({company_id:cid,site_id:siteId,name:n,floors:f,apts_per_floor:p}).select().single()),rows=[];
+  for(let fl=0;fl<f;fl++)for(let i=1;i<=p;i++)rows.push({company_id:cid,site_id:siteId,building_id:b.id,building:n,floor:fl,type:t.length==1?t[0]:t[i-1],code:String(fl)+String(i).padStart(2,'0')});
+  try{chk(await db.from('apartments').insert(rows))}catch(e){await db.from('buildings').delete().eq('id',b.id);throw e}}
+function setupView(){show(`<div class="auth"><h1>Votre chantier</h1><p class="mut">Vous pourrez ajouter d'autres bâtiments ensuite.</p>${field('sn','Nom du chantier')}<h2>Premier bâtiment</h2>${bFields()}<div class="lbl">Ouvriers (un par ligne : nom, métier)</div><textarea class="in" id="sw" placeholder="Karim, Plombier&#10;Samir, Électricien"></textarea><div class="err" id="er"></div><button class="btn" id="ok" data-a="mksite">Créer le chantier</button></div>`);bpv()}
+async function mkSite(){const n=$('#sn').value.trim(),ws=$('#sw').value.split('\n').map(l=>l.split(',').map(s=>s.trim())).filter(l=>l[0]);
+  if(!n)return $('#er').textContent='Le nom du chantier est obligatoire.';
   await run(async()=>{const cid=PF.company_id,s=chk(await db.from('sites').insert({company_id:cid,name:n}).select().single());
-    chk(await db.from('apartments').insert(codes.map(c=>({company_id:cid,site_id:s.id,building:b,code:c}))));
+    try{await bCreate(s.id)}catch(e){await db.from('sites').delete().eq('id',s.id);throw e}
     if(ws.length)chk(await db.from('workers').insert(ws.map(w=>({company_id:cid,name:w[0],trade:w[1]||null}))));boot()})}
+function cfg(){const own=PF.role=='owner',cnt=b=>AP.filter(a=>a.building_id==b.id),sum=b=>{const o={};cnt(b).forEach(a=>{const t=a.type||'—';o[t]=(o[t]||0)+1});return Object.entries(o).map(e=>e[1]+' '+e[0]).join(' · ')};
+return `<h2>${esc(SITE.name)}</h2><div class="lbl">Bâtiments</div>${BD.map(b=>`<div class="card item"><b>${esc(b.name)}</b><div class="mut">${b.floors?b.floors+' niveaux · '+b.apts_per_floor+' appartements par étage':'Bâtiment existant'}</div><div class="mut">${cnt(b).length} appartements : ${esc(sum(b))}</div></div>`).join('')||'<p class="mut">Aucun bâtiment.</p>'}${own?'<button class="btn sec" data-a="addb">+ Ajouter un bâtiment</button>':''}<div class="lbl" style="margin-top:22px">Ouvriers</div>${W.map(w=>`<div class="card row item"><div class="ic">${ic('box')}</div><div class="grow"><b>${esc(w.name)}</b><div class="mut">${esc(w.trade||'')}</div></div></div>`).join('')||'<p class="mut">Aucun ouvrier.</p>'}${own?'<button class="btn sec" data-a="addw">+ Ajouter un ouvrier</button>':''}`}
 
-function renderNav(){const L=[['home','Accueil','home'],['stock','Stock','box'],['mv','Mouvements','tr'],['rep','Rapports','rep']];$('#nav').innerHTML=L.map(l=>`<button class="${tab==l[0]?'on':''}" data-a="tab" data-t="${l[0]}">${ic(l[2])}${l[1]}</button>`).join('')}
-function render(){renderNav();show({home,stock,mv,rep}[tab]());if(tab=='stock')fillStock();if(tab=='mv')fillMv()}
+function renderNav(){const L=[['home','Accueil','home'],['stock','Stock','box'],['mv','Mouvements','tr'],['rep','Rapports','rep'],['cfg','Chantier','cfg']];$('#nav').innerHTML=L.map(l=>`<button class="${tab==l[0]?'on':''}" data-a="tab" data-t="${l[0]}">${ic(l[2])}${l[1]}</button>`).join('')}
+function render(){renderNav();show({home,stock,mv,rep,cfg}[tab]());if(tab=='stock')fillStock();if(tab=='mv')fillMv()}
 function home(){const t0=day0(),s=ty=>M.filter(m=>m.type==ty&&m.ts>=t0).reduce((a,m)=>a+m.qty,0),low=A.filter(a=>a.qty<=a.min_qty).length,tot=A.reduce((a,x)=>a+x.qty,0);
 const Q=(k,l,a)=>`<button class="big" data-a="${a}"><div class="ic">${ic(k)}</div>${l}</button>`;
 return `<div class="row" style="justify-content:space-between"><div class="top"><div class="logo">${ic('box')}</div>Stock Chantier</div><button class="chip" data-a="logout">Déconnexion</button></div><p>Bonjour, <b>${esc(PF.full_name)}</b> · ${PF.role=='owner'?'Propriétaire':'Magasinier'}</p><div class="pill">${esc(SITE.name)}</div>
@@ -65,8 +78,9 @@ function fillStock(){const q=F.sq.toLowerCase();const L=A.filter(a=>(F.low?a.qty
 const filt=()=>M.filter(m=>(F.type=='all'||m.type==F.type)&&(!F.q||(m.name+m.worker+m.apt).toLowerCase().includes(F.q.toLowerCase()))&&(!F.from||m.ts>=new Date(F.from).getTime())&&(!F.to||m.ts<=new Date(F.to).getTime()+864e5-1));
 function mv(){return `<h2>Mouvements</h2><div class="chips">${[['all','Tous'],['in','Entrées'],['out','Sorties']].map(c=>`<button class="chip ${F.type==c[0]?'on':''}" data-a="type" data-c="${c[0]}">${c[1]}</button>`).join('')}</div><input class="in" id="mq" placeholder="Rechercher (article, ouvrier, appartement)" value="${esc(F.q)}"><div class="grid2"><div><div class="mut">Du</div><input class="in" type="date" id="mf" value="${F.from}"></div><div><div class="mut">Au</div><input class="in" type="date" id="mt" value="${F.to}"></div></div><button class="btn" data-a="xl">Exporter en Excel</button><div class="mut" id="cnt" style="margin:12px 0 8px"></div><div id="list"></div>`}
 function fillMv(){const L=filt();$('#cnt').textContent=L.length+' mouvement(s)';$('#list').innerHTML=L.map(m=>`<div class="card row item"><div class="ic">${ic(m.type=='in'?'in':'out')}</div><div class="grow"><b>${m.type=='in'?'Entrée':'Sortie'} · ${esc(m.name)} ×${m.qty}</b><div class="mut">${[m.worker,m.apt,fdate(m.ts)].filter(Boolean).map(esc).join(' · ')}</div></div><b>${money(m.cost)}</b></div>`).join('')||'<p class="mut">Aucun mouvement.</p>'}
-function rep(){const E=C.map(c=>[c.building+' '+c.code,+c.cost]).sort((a,b)=>b[1]-a[1]),tot=E.reduce((a,e)=>a+e[1],0),mx=E[0]&&E[0][1]||1;
-return `<h2>Coût par appartement</h2><div class="hero"><div style="opacity:.8;font-size:13px">Coût total des sorties</div><b>${money(tot)}</b></div><div class="card">${E.map(e=>`<div style="margin-bottom:14px"><div class="row" style="justify-content:space-between"><b>${esc(e[0])}</b><b>${money(e[1])}</b></div><div class="bar"><i style="width:${e[1]/mx*100}%"></i></div></div>`).join('')||'<p class="mut">Aucun appartement.</p>'}</div>`}
+function rep(){const by={};C.forEach(c=>(by[c.building]=by[c.building]||[]).push(c));const tot=C.reduce((a,c)=>a+ +c.cost,0);
+const B=Object.entries(by).map(([n,L])=>[n,L.reduce((a,c)=>a+ +c.cost,0),L.sort((x,y)=>y.cost-x.cost)]).sort((a,b)=>b[1]-a[1]);
+return `<h2>Coût par appartement</h2><div class="hero"><div style="opacity:.8;font-size:13px">Coût total des sorties</div><b>${money(tot)}</b></div>${B.map(b=>{const mx=+b[2][0].cost||1;return `<details class="card item"><summary style="display:flex;justify-content:space-between;font-weight:800;cursor:pointer;min-height:32px;align-items:center"><span>${esc(b[0])}</span><span>${money(b[1])}</span></summary>${b[2].map(c=>`<div style="margin-top:12px"><div class="row" style="justify-content:space-between"><b>${esc(c.code)} <span class="mut">${esc([c.type,flName(c.floor)].filter(Boolean).join(' · '))}</span></b><b>${money(c.cost)}</b></div><div class="bar"><i style="width:${+c.cost/mx*100}%"></i></div></div>`).join('')}</details>`}).join('')||'<p class="mut">Aucun appartement.</p>'}`}
 
 function sheet(title,body,ok,fn){$('#sh').innerHTML=`<h2 style="margin-top:0">${title}</h2>${body}<div class="err" id="er"></div><button class="btn" id="ok">${ok}</button><button class="btn sec" data-a="close" style="margin-top:10px">Annuler</button>`;$('#ov').style.display='flex';$('#ok').onclick=()=>run(fn)}
 const sel=(id,L)=>`<select class="in" id="${id}">${L.map(l=>`<option value="${esc(l[0])}">${esc(l[1])}</option>`).join('')}</select>`;
@@ -77,10 +91,18 @@ function open(k,pre){
     const it=chk(await db.from('items').insert({company_id:PF.company_id,site_id:SITE.id,name:n,category:$('#ac').value,unit_price:p,barcode:$('#ab').value.trim()||null,min_qty:Math.max(0,+$('#am').value|0),qty:0}).select().single());
     if(q>0)chk(await db.rpc('record_movement',{p_item:it.id,p_type:'in',p_qty:q}));await done('Article ajouté')});
   if(!A.length)return toast('Ajoutez d\'abord un article.');
-  const out=k=='out';sheet(out?'Sortie de stock':'Entrée de stock',`<div class="lbl">Article</div><button class="btn sec" data-a="scanitem" style="min-height:48px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px">${ic('scan',20)} Scanner l'article</button><div id="lk"></div>${sel('fa',A.map(a=>[a.id,`${a.name} (stock ${a.qty})`]))}${out?`<div class="lbl">Ouvrier</div>${sel('fw',W.map(w=>[w.id,w.name+(w.trade?' · '+w.trade:'')]))}<div class="lbl">Appartement</div>${sel('fp',AP.map(a=>[a.id,a.building+' '+a.code]))}`:`${field('fs','Fournisseur (optionnel)')}`}<div class="lbl">Quantité</div><div class="step"><button data-a="q" data-d="-1" aria-label="Moins">−</button><input class="in" id="fq" type="number" inputmode="numeric" value="1"><button data-a="q" data-d="1" aria-label="Plus">+</button></div><div id="est" class="mut"></div>`,out?'Valider la sortie':"Valider l'entrée",async()=>{
-    const q=+$('#fq').value;if(!(q>=1)||q%1)throw{message:'Quantité invalide.'};if(out&&(!W.length||!AP.length))throw{message:'Ajoutez des ouvriers et des appartements.'};
-    chk(await db.rpc('record_movement',{p_item:$('#fa').value,p_type:k,p_qty:q,p_worker:out?$('#fw').value:null,p_apartment:out?$('#fp').value:null,p_supplier:out?null:($('#fs').value.trim()||null)}));await done(out?'Sortie enregistrée':'Entrée enregistrée')});est()}
-function est(){const a=A.find(x=>x.id==($('#fa')||{}).value),q=+($('#fq')||{}).value||0;if($('#est')&&a)$('#est').textContent='Coût : '+money(q*a.unit_price)}
+  const out=k=='out';BK=[];if(out&&(!W.length||!AP.length))return toast('Ajoutez des ouvriers et des bâtiments (onglet Chantier).');
+  sheet(out?'Sortie de stock':'Entrée de stock',`${out?`<div class="lbl">Ouvrier</div>${sel('fw',W.map(w=>[w.id,w.name+(w.trade?' · '+w.trade:'')]))}<div class="lbl">Destination</div>${sel('fb',BD.map(b=>[b.id,b.name]))}<div class="grid2"><select class="in" id="fl" aria-label="Étage"></select><select class="in" id="fp" aria-label="Appartement"></select></div>`:field('fs','Fournisseur (optionnel)')}<div class="lbl">Articles</div><button class="btn sec" data-a="scanitem" style="min-height:48px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px">${ic('scan',20)} Scanner un article</button><div id="lk"></div><div class="row" style="gap:8px;margin-bottom:10px"><select class="in grow" id="fa" style="margin:0">${A.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} (stock ${a.qty})</option>`).join('')}</select><button class="chip on" data-a="bkadd">Ajouter</button></div><div id="bk"></div><div id="est" style="font-weight:800;margin:6px 0"></div>`,out?'Valider la sortie':"Valider l'entrée",async()=>{
+    if(!BK.length)throw{message:'Ajoutez au moins un article.'};
+    if(out){if(!$('#fp').value)throw{message:'Choisissez un appartement.'};const bad=BK.find(l=>l.q>A.find(a=>a.id==l.id).qty);if(bad)throw{message:'Stock insuffisant : '+A.find(a=>a.id==bad.id).name}}
+    chk(await db.rpc('record_movements',{p_type:k,p_lines:BK.map(l=>({item:l.id,qty:l.q})),p_worker:out?$('#fw').value:null,p_apartment:out?$('#fp').value:null,p_supplier:out?null:($('#fs').value.trim()||null)}));
+    await done(out?'Sortie enregistrée':'Entrée enregistrée')});
+  if(out)destFill();bkDraw()}
+function destFill(src){const b=$('#fb').value;if(src!='fl'){const fl=[...new Set(AP.filter(a=>a.building_id==b).map(a=>a.floor??''))].sort((x,y)=>(x===''?-1:x)-(y===''?-1:y));$('#fl').innerHTML=fl.map(f=>`<option value="${f}">${f===''?'Étage ?':flName(f)}</option>`).join('')}
+  const f=$('#fl').value;$('#fp').innerHTML=AP.filter(a=>a.building_id==b&&String(a.floor??'')==f).sort((x,y)=>x.code.localeCompare(y.code)).map(a=>`<option value="${a.id}">${esc(a.code)} · ${esc(a.type||'')}</option>`).join('')}
+const bkAdd=(id,q=1)=>{const l=BK.find(x=>x.id==id);l?l.q+=q:BK.push({id,q});bkDraw()};
+const bkTot=()=>{$('#est').textContent=BK.length?'Total : '+money(BK.reduce((s,l)=>s+l.q*A.find(x=>x.id==l.id).unit_price,0)):''};
+function bkDraw(){$('#bk').innerHTML=BK.map((l,i)=>{const a=A.find(x=>x.id==l.id);return `<div class="card item" style="padding:10px"><div class="row"><div class="grow"><b>${esc(a.name)}</b><div class="mut">${a.qty} en stock</div></div><button class="circ" data-a="bx" data-i="${i}" aria-label="Retirer" style="border:1px solid var(--bd)">✕</button></div><div class="step" style="margin:8px 0 0"><button data-a="bq" data-i="${i}" data-d="-1" aria-label="Moins">−</button><input class="in bqi" data-i="${i}" type="number" inputmode="numeric" value="${l.q}"><button data-a="bq" data-i="${i}" data-d="1" aria-label="Plus">+</button></div></div>`}).join('')||'<p class="mut">Aucun article ajouté.</p>';bkTot()}
 function xl(){const L=filt();if(!L.length)return toast('Aucun mouvement à exporter.');
   const rows=[['Date','Type','Article','Quantité','Ouvrier','Appartement','Coût (DA)','Saisi par']].concat(L.map(m=>[fdate(m.ts),m.type=='in'?'Entrée':'Sortie',m.name,m.qty,m.worker,m.apt,m.cost,m.by]));
   const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:16},{wch:9},{wch:28},{wch:10},{wch:22},{wch:14},{wch:12},{wch:16}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Mouvements');
@@ -89,15 +111,20 @@ function xl(){const L=filt();if(!L.length)return toast('Aucun mouvement à expor
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b)return;const d=b.dataset,a=d.a;
 if(a=='tab'){tab=d.t;F.low=false;render()}else if(a=='open')open(d.k);else if(a=='close')close_();else if(a=='soon')toast('Bientôt disponible');else if(a=='xl')xl();
 else if(a=='cat'){F.cat=d.c;F.low=false;render()}else if(a=='type'){F.type=d.c;render()}else if(a=='lowlist'){tab='stock';F.low=true;render()}
-else if(a=='q'){const i=$('#fq');i.value=Math.max(1,(+i.value||1)+ +d.d);est()}
+else if(a=='bq'){const l=BK[+d.i];l.q=Math.max(1,l.q+ +d.d);bkDraw()}
+else if(a=='bx'){BK.splice(+d.i,1);bkDraw()}
+else if(a=='bkadd')bkAdd($('#fa').value);
+else if(a=='addb'){sheet('Nouveau bâtiment',bFields(),'Ajouter',async()=>{await bCreate(SITE.id);await done('Bâtiment ajouté')});bpv()}
+else if(a=='addw')sheet('Nouvel ouvrier',`${field('wn','Nom')}${field('wt','Métier (ex : Plombier)')}`,'Ajouter',async()=>{const n=$('#wn').value.trim();if(!n)throw{message:'Le nom est obligatoire.'};chk(await db.from('workers').insert({company_id:PF.company_id,name:n,trade:$('#wt').value.trim()||null}));await done('Ouvrier ajouté')})
 else if(a=='login')auth(false);else if(a=='signup')auth(true);else if(a=='mksite')mkSite();
 else if(a=='mkco'){const c=$('#co').value.trim(),n=$('#nm').value.trim();if(!c||!n)return $('#er').textContent='Tous les champs sont obligatoires.';await run(async()=>{chk(await db.rpc('create_company',{p_company:c,p_name:n}));boot()})}
 else if(a=='scanstop')stopScan();
 else if(a=='scanfield')scan(c=>{$('#ab').value=c});
 else if(a=='scanfind')scan(c=>{const it=A.find(x=>x.barcode===c);if(it){F.sq=it.name;F.cat='Tout';F.low=false;render();toast(it.name)}else{toast('Code inconnu : créez l\'article.');open('art',c)}});
-else if(a=='scanitem')scan(c=>{const it=A.find(x=>x.barcode===c);if(it){$('#fa').value=it.id;est();$('#lk').innerHTML='';toast(it.name)}else $('#lk').innerHTML=`<div class="card" style="margin-bottom:10px"><b>Code inconnu</b><div class="mut">${esc(c)}</div><div class="mut">Choisissez l'article dans la liste, puis associez-le : la prochaine fois, un scan suffira.</div><button class="btn" style="min-height:46px;margin-top:8px" data-a="link" data-c="${esc(c)}">Associer à l'article choisi</button></div>`});
+else if(a=='scanitem')scan(c=>{const it=A.find(x=>x.barcode===c);if(it){bkAdd(it.id);$('#lk').innerHTML='';toast(it.name)}else $('#lk').innerHTML=`<div class="card" style="margin-bottom:10px"><b>Code inconnu</b><div class="mut">${esc(c)}</div><div class="mut">Choisissez l'article dans la liste, puis associez-le : la prochaine fois, un scan suffira.</div><button class="btn" style="min-height:46px;margin-top:8px" data-a="link" data-c="${esc(c)}">Associer à l'article choisi</button></div>`});
 else if(a=='link')await run(async()=>{chk(await db.rpc('set_item_barcode',{p_item:$('#fa').value,p_barcode:d.c}));await loadAll();$('#lk').innerHTML='';toast('Code associé à l\'article')});
 else if(a=='logout'){await db.auth.signOut();boot()}});
-document.addEventListener('input',e=>{const i=e.target.id;if(i=='sq'){F.sq=e.target.value;fillStock()}else if(i=='mq'){F.q=e.target.value;fillMv()}else if(i=='mf'){F.from=e.target.value;fillMv()}else if(i=='mt'){F.to=e.target.value;fillMv()}else if(i=='fq'||i=='fa')est()});
+document.addEventListener('input',e=>{const i=e.target.id;if(i=='sq'){F.sq=e.target.value;fillStock()}else if(i=='mq'){F.q=e.target.value;fillMv()}else if(i=='mf'){F.from=e.target.value;fillMv()}else if(i=='mt'){F.to=e.target.value;fillMv()}else if(i=='fb')destFill();else if(i=='fl')destFill('fl');else if(i=='bf'||i=='bp')bpv();else if(e.target.classList.contains('bqi')){const l=BK[+e.target.dataset.i];if(l){l.q=Math.max(1,+e.target.value|0);bkTot()}}});
 document.addEventListener('keydown',e=>{if(e.key=='Enter'&&e.target.id=='scin'){e.preventDefault();$('#scok').click()}});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 boot().catch(e=>show('<div class="card auth err">'+esc(msg(e))+'</div>'));
